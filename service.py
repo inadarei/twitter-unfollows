@@ -1,41 +1,118 @@
-"""Entry point of our microservice. API endpoints (routes) are defined here.
- """
+import threading
+import twitter
+import redis
+import sys
+import os
+import json
+from datetime import datetime
 
-#pylint: disable=unused-import
-import logging as log
-import uuid
+def env_var(name, default):
+    """Safely retrieve an env var, with a default"""
+    return os.environ.get(name) if name in os.environ else default
 
-from flask import Flask, request, jsonify, Response
-from src import handlers, model
-
+# this is a pointer to the module object instance itself.
 # pylint: disable=invalid-name
-app = Flask(__name__)
-
-
-@app.route('/hello/<name>', methods=['GET'])
-def say_hello(name):
-    """ Greeter Endpoint"""
-    resp = handlers.greeter(name)
-    return Response(resp, mimetype='plain/text')
-
-# For more sophisticated forms in Flask, see:
-# https://blog.miguelgrinberg.com/post/the-flask-mega-tutorial-part-iii-web-forms
-@app.route('/users', defaults={'user_id': ""}, methods=['POST'])
-@app.route('/users/<user_id>', methods=['POST'])
-def update_user(user_id):
-    """Endpoint that creates or saves user in Redis database"""
-    # Note 'force=True' ignores mime-type=app/json requirement default in Flask
-    user = request.get_json(force=True)
-
-    resp = handlers.save_user(user, user_id)
-    return jsonify(resp)
-
+this = sys.modules[__name__]
 
 def init():
-    """Init routine for the microservice"""
-    uuid.uuid1() # prime the uuid generator at startup
+    REDIS_HOST = env_var("REDIS_HOST", '0.0.0.0')
+    REDIS_PORT = env_var("REDIS_PORT", '6379')
+    REDIS_DB = env_var("REDIS_DB", '0')
+    REDIS_PWD = env_var("REDIS_PWD", '')
 
-if __name__ == '__main__':
-    init()
+    access_token = env_var("TWITTER_ACCESS_TOKEN", "")
+    access_token_secret = env_var("TWITTER_ACCESS_TOKEN_SECRET", "")
+    consumer_key = env_var("TWITTER_API_KEY", "")
+    consumer_secret = env_var("TWITTER_API_SECRET_KEY", "")
 
-    app.run(debug=True, host='0.0.0.0')
+    this.redis_conn = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, \
+                              db=REDIS_DB, password=REDIS_PWD)
+
+    this.twitter = twitter.Api(consumer_key=consumer_key,
+                  consumer_secret=consumer_secret,
+                  access_token_key=access_token,
+                  access_token_secret=access_token_secret,
+                  sleep_on_rate_limit=True)
+
+def check():
+    print("checking: %s ", str(datetime.now()))
+    followers = this.twitter.GetFollowers()
+    followers_ids = [follower.id for follower in followers]
+    print ("Total of %d followers found", len(followers))
+
+    dictFollowers = {}
+
+    # Add the new followers
+    for follower in followers:
+    #    print ("[%s] Found a new follower : %s [%s] (#%d)", \
+    #         (datetime.today().strftime('%d/%m %H:%M'), follower.name, follower.screen_name, follower.id))
+
+        dictFollowers[follower.id] = str({
+                "name": follower.name,
+                "screen_name" : follower.screen_name,
+                "twitter_id" : follower.id,
+                "last" : str(datetime.now())
+        })
+
+    unixtimestamp = datetime.now().strftime("%s")
+    keyname = "twe" + unixtimestamp
+    this.redis_conn.hset(keyname, None, None, dictFollowers)
+    this.redis_conn.lpush("twevents", keyname)
+    print(f"Added: {keyname}")
+
+def decodeBinaryList(input):
+    return [
+        el.decode('utf8')
+        for el in input
+    ]
+
+def formatUnfollower(uf):
+    uf = uf.decode('utf-8')
+    uf = json.loads(uf.replace("'", '"'))
+    uf = {"username" : uf['screen_name'], "name": uf['name']}
+    return uf    
+
+def show():
+    latest = this.redis_conn.lrange("twevents", 0, 1)
+    last = latest[0].decode('utf8')
+    prelast = latest[1].decode('utf8')
+    print (f"Latest: {last} - Prelatest: {prelast}")
+    kLast = decodeBinaryList(this.redis_conn.hkeys(last))
+    kPreLast = decodeBinaryList(this.redis_conn.hkeys(prelast))
+    this.redis_conn.sadd("twe-prelast", *kPreLast)
+    ohdiff = decodeBinaryList(this.redis_conn.sdiff("twe-prelast", "twe-last"))
+    unfollowers = [
+        formatUnfollower(el)
+        for el in this.redis_conn.hmget(prelast, *ohdiff)
+    ]
+    print(unfollowers)
+    print(ohdiff)
+
+def scheduler():
+    threading.Timer(4.0*3600, scheduler).start()
+    check()
+
+def help():
+    prefix = f"{sys.argv[0]}"
+    print (f"""
+Usage:
+ {prefix} show - show recent unfollows
+ {prefix} run - run the analysis
+""")    
+    sys.exit(0)
+
+init()
+# check()
+# scheduler()
+
+if len(sys.argv) != 2:
+    help()
+if sys.argv[1] != "show" and sys.argv[1] != "run":
+    help()
+
+if sys.argv[1] == "show":
+    show()
+    sys.exit(0)
+if sys.argv[1] == "run":
+    check()
+    sys.exit(0)
