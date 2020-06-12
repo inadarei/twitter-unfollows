@@ -26,7 +26,8 @@ def init():
     consumer_secret = env_var("TWITTER_API_SECRET_KEY", "")
 
     this.redis_conn = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, \
-                              db=REDIS_DB, password=REDIS_PWD)
+                              db=REDIS_DB, password=REDIS_PWD,
+                              decode_responses=True)
 
     this.twitter = twitter.Api(consumer_key=consumer_key,
                   consumer_secret=consumer_secret,
@@ -67,26 +68,30 @@ def decodeBinaryList(input):
     ]
 
 def formatUnfollower(uf):
-    uf = uf.decode('utf-8')
+    # uf = uf.decode('utf-8')
     uf = json.loads(uf.replace("'", '"'))
     uf = {"username" : uf['screen_name'], "name": uf['name']}
     return uf    
 
 def show():
     latest = this.redis_conn.lrange("twevents", 0, 1)
-    last = latest[0].decode('utf8')
-    prelast = latest[1].decode('utf8')
+    last = latest[0] #.decode('utf8')
+    prelast = latest[1] #.decode('utf8')
     print (f"Latest: {last} - Prelatest: {prelast}")
-    kLast = decodeBinaryList(this.redis_conn.hkeys(last))
-    kPreLast = decodeBinaryList(this.redis_conn.hkeys(prelast))
+    kLast = this.redis_conn.hkeys(last)
+    kPreLast = this.redis_conn.hkeys(prelast)
+    this.redis_conn.sadd("twe-last", *kLast)
     this.redis_conn.sadd("twe-prelast", *kPreLast)
-    ohdiff = decodeBinaryList(this.redis_conn.sdiff("twe-prelast", "twe-last"))
-    unfollowers = [
-        formatUnfollower(el)
-        for el in this.redis_conn.hmget(prelast, *ohdiff)
-    ]
-    print(unfollowers)
-    print(ohdiff)
+    ohdiff = this.redis_conn.sdiff("twe-prelast", "twe-last")
+    print (f"unfollowed ids: {ohdiff}")
+    if len(ohdiff) > 0:
+        unfollowers = [
+            formatUnfollower(el)
+            for el in this.redis_conn.hmget(prelast, *ohdiff)
+        ]
+        print(unfollowers)
+    else:
+        print("No un-followers in the latest batch")
 
 def scheduler():
     threading.Timer(4.0*3600, scheduler).start()
