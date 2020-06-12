@@ -9,5 +9,5 @@ RUN apk upgrade --update \
  && apk add bash \
  && pip install -r requirements.txt \
  && apk del build-base # reduce size \
- && echo never > /sys/kernel/mm/transparent_hugepage/enabled \
+ #&& echo never > /sys/kernel/mm/transparent_hugepage/enabled \
  && apk add make
