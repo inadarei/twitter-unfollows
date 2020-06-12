@@ -11,7 +11,3 @@ RUN apk upgrade --update \
  && apk del build-base # reduce size \
  && echo never > /sys/kernel/mm/transparent_hugepage/enabled \
  && apk add make
-
-
-CMD ["gunicorn", "-b 0.0.0.0", "--reload", \
-     "-w 4", "service:app"]
