@@ -67,11 +67,11 @@ def decodeBinaryList(input):
         for el in input
     ]
 
-def formatUnfollower(uf):
+def formatTwitterUser(twuser):
     # uf = uf.decode('utf-8')
-    uf = json.loads(uf.replace("'", '"'))
-    uf = {"username" : uf['screen_name'], "name": uf['name']}
-    return uf    
+    twuser = json.loads(twuser.replace("'", '"'))
+    twuser = {"username" : twuser['screen_name'], "name": twuser['name']}
+    return twuser
 
 def show():
     latest = this.redis_conn.lrange("twevents", 0, 1)
@@ -82,11 +82,22 @@ def show():
     kPreLast = this.redis_conn.hkeys(prelast)
     this.redis_conn.sadd("twe-last", *kLast)
     this.redis_conn.sadd("twe-prelast", *kPreLast)
+    yaydiff = this.redis_conn.sdiff("twe-last", "twe-prelast")
+    print (f"New followers' ids: {yaydiff}")
+    if len(yaydiff) > 0:
+        newfollowers = [
+            formatTwitterUser(el)
+            for el in this.redis_conn.hmget(last, *yaydiff)
+        ]
+        print(newfollowers)
+    else:
+        print("No new followers in the latest batch")
+
     ohdiff = this.redis_conn.sdiff("twe-prelast", "twe-last")
-    print (f"unfollowed ids: {ohdiff}")
+    print (f"Unfollowers' ids: {ohdiff}")
     if len(ohdiff) > 0:
         unfollowers = [
-            formatUnfollower(el)
+            formatTwitterUser(el)
             for el in this.redis_conn.hmget(prelast, *ohdiff)
         ]
         print(unfollowers)

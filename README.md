@@ -10,6 +10,7 @@ Python script helping track unfollows on Twitter
       - TWITTER_ACCESS_TOKEN_SECRET
       - TWITTER_API_KEY
       - TWITTER_API_SECRET_KEY
+4. Set up `make check` on cron (probably every 12 or 24 hours, 6 hours at most) 
 
 ## Supported Commands:
 
