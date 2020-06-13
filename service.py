@@ -73,6 +73,17 @@ def formatTwitterUser(twuser):
     twuser = {"username" : twuser['screen_name'], "name": twuser['name']}
     return twuser
 
+def printDifferences(tweeps, full_list, none_notice):
+    if len(tweeps) > 0:
+        diffUsers = [
+            formatTwitterUser(el)
+            for el in this.redis_conn.hmget(full_list, *tweeps)
+        ]
+        print(diffUsers)
+    else:
+        print(none_notice)
+
+
 def show():
     latest = this.redis_conn.lrange("twevents", 0, 1)
     last = latest[0] #.decode('utf8')
@@ -82,27 +93,14 @@ def show():
     kPreLast = this.redis_conn.hkeys(prelast)
     this.redis_conn.sadd("twe-last", *kLast)
     this.redis_conn.sadd("twe-prelast", *kPreLast)
-    yaydiff = this.redis_conn.sdiff("twe-last", "twe-prelast")
-    print (f"New followers' ids: {yaydiff}")
-    if len(yaydiff) > 0:
-        newfollowers = [
-            formatTwitterUser(el)
-            for el in this.redis_conn.hmget(last, *yaydiff)
-        ]
-        print(newfollowers)
-    else:
-        print("No new followers in the latest batch")
 
+    print("\nChecking new followers...")
+    yaydiff = this.redis_conn.sdiff("twe-last", "twe-prelast")
+    printDifferences(yaydiff, last, "No new followers in the latest batch")
+
+    print("\nChecking new un-followers...")
     ohdiff = this.redis_conn.sdiff("twe-prelast", "twe-last")
-    print (f"Unfollowers' ids: {ohdiff}")
-    if len(ohdiff) > 0:
-        unfollowers = [
-            formatTwitterUser(el)
-            for el in this.redis_conn.hmget(prelast, *ohdiff)
-        ]
-        print(unfollowers)
-    else:
-        print("No un-followers in the latest batch")
+    printDifferences(ohdiff, prelast, "No un-followers in the latest batch")
 
 def scheduler():
     threading.Timer(4.0*3600, scheduler).start()
