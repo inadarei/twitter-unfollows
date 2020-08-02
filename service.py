@@ -36,10 +36,10 @@ def init():
                   sleep_on_rate_limit=True)
 
 def check():
-    print("checking: %s ", str(datetime.now()))
+    print("checking: %s " % str(datetime.now()))
     followers = this.twitter.GetFollowers()
     followers_ids = [follower.id for follower in followers]
-    print ("Total of %d followers found", len(followers))
+    print (f'Total of {len(followers)} followers found')
 
     dictFollowers = {}
 
@@ -86,12 +86,19 @@ def printDifferences(tweeps, full_list, none_notice):
 
 def show():
     latest = this.redis_conn.lrange("twevents", 0, 1)
+    if len(latest) < 1:
+        return
+
     last = latest[0] #.decode('utf8')
+    kLast = this.redis_conn.hkeys(last)
+    this.redis_conn.sadd("twe-last", *kLast)
+
+    if len(latest) < 2:
+        return
+
     prelast = latest[1] #.decode('utf8')
     print (f"Latest: {last} - Prelatest: {prelast}")
-    kLast = this.redis_conn.hkeys(last)
     kPreLast = this.redis_conn.hkeys(prelast)
-    this.redis_conn.sadd("twe-last", *kLast)
     this.redis_conn.sadd("twe-prelast", *kPreLast)
 
     print("\nChecking new followers...")
